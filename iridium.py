@@ -8,7 +8,10 @@ import subprocess
 import sys
 
 # --- SECURITY CONFIGURATION ---
-SECRET_SALT = "birds-are-nothing-but-glorified-dinosaurs"
+# --- SECURITY CONFIGURATION ---
+# It will try to load the salt from your system environment for safety.
+# If not found, it uses a placeholder.
+SECRET_SALT = os.environ.get("IRIDIUM_SALT", "REPLACE_THIS_WITH_YOUR_PRIVATE_SALT_IN_ENV")
 
 def copy_to_clipboard(text):
     """Detects the operating system and copies text to the clipboard natively."""
