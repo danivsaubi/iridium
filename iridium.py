@@ -5,111 +5,106 @@ import string
 import time
 import os
 import subprocess
-import pyperclip
+import sys
 
 # --- SECURITY CONFIGURATION ---
-# Important: Changing this secret string will change all generated passwords!
 SECRET_SALT = "birds-are-nothing-but-glorified-dinosaurs"
 
-def generate_password(master_password, seed, length, use_symbols):
-    # 1. Hashing logic
-    full_string = master_password + seed + SECRET_SALT
+def copy_to_clipboard(text):
+    """Detects the operating system and copies text to the clipboard natively."""
+    try:
+        # 1. WINDOWS (or WSL pointing to Windows)
+        win_clip = "/mnt/c/Windows/System32/clip.exe" if os.path.exists("/mnt/c/Windows") else "clip.exe"
+        if sys.platform == "win32" or os.path.exists("/mnt/c/Windows"):
+            process = subprocess.Popen([win_clip], stdin=subprocess.PIPE, shell=(sys.platform=="win32"))
+            process.communicate(input=text.encode())
+            return "Windows Clipboard"
+
+        # 2. ANDROID (Termux)
+        if subprocess.run(["which", "termux-clipboard-set"], capture_output=True).returncode == 0:
+            subprocess.run(["termux-clipboard-set"], input=text.encode())
+            return "Termux Clipboard"
+
+        # 3. UNIX / LINUX (Generic)
+        for tool in ["xclip -selection clipboard", "xsel -bi"]:
+            cmd = tool.split()
+            if subprocess.run(["which", cmd[0]], capture_output=True).returncode == 0:
+                subprocess.run(cmd, input=text.encode())
+                return f"Linux ({cmd[0]})"
+    except:
+        pass
+    return None
+
+def generate_password(master, seed, length, symbols):
+    """Deterministic SHA-256 password generation."""
+    full_string = master + seed + SECRET_SALT
     hash_hex = hashlib.sha256(full_string.encode()).hexdigest()
     
-    # 2. Character set
-    characters = string.ascii_letters + string.digits
-    if use_symbols:
-        characters += "!@#$%^&*()-_+=<>?"
+    chars = string.ascii_letters + string.digits
+    if symbols:
+        chars += "!@#$%^&*()-_+=<>?"
 
-    # 3. Mapping hash to string
-    final_password = ""
+    final_pass = ""
     hash_int = int(hash_hex, 16)
-    
-    for i in range(length):
-        index = hash_int % len(characters)
-        final_password += characters[index]
-        hash_int //= len(characters)
-        
-    return final_password
-
-def copy_to_windows_clipboard(text):
-    """Bridge function to send text to Windows clipboard from WSL."""
-    win_clip_path = "/mnt/c/Windows/System32/clip.exe"
-    if os.path.exists(win_clip_path):
-        try:
-            process = subprocess.Popen([win_clip_path], stdin=subprocess.PIPE)
-            process.communicate(input=text.encode())
-            return True
-        except:
-            return False
-    return False
+    for _ in range(length):
+        final_pass += chars[hash_int % len(chars)]
+        hash_int //= len(chars)
+    return final_pass
 
 def main():
-    # Initial clear (Ctrl+L)
+    # Universal screen clear (ANSI)
     print("\033[H\033[J", end="")
-    
-    print("IRIDIUM PASSWORD GENERATOR PRO")
-    print("-" * 30 + "\n")
-    
-    # 1. Master Password
-    while True:
-        m_pass = getpass.getpass("🔑 Master Password (min 10): ")
-        if len(m_pass) >= 10:
-            confirm = getpass.getpass("🔄 Confirm Master Password: ")
-            if m_pass == confirm:
-                break
-            print("❌ Error: Passwords do not match.")
-        else:
-            print("❌ Error: Minimum 10 characters required.")
-            
-    # 2. Seed
-    seed = input("🌱 Seed / Service: ")
-    
-    # 3. Length
-    while True:
-        try:
-            len_input = input("📏 Length (10-256): ")
-            password_length = int(len_input)
-            if 10 <= password_length <= 256: break
-            print("❌ Error: Use a number between 10 and 256.")
-        except ValueError:
-            print("❌ Error: Please enter a valid number.")
+    print("===== 🛡️ Iridium Universal Password Generator =====")
+    print("=" * 30)
 
-    # 4. Symbols
-    use_syms = input("✨ Include symbols? (y/n): ").lower() == 'y'
+    # User Inputs with Confirmation
+    master = getpass.getpass("🔑 Master Password: ")
+    confirm_master = getpass.getpass("🔁 Confirm Master Password: ")
+
+    if master != confirm_master:
+        print("\n❌ Error: Passwords do not match. Integrity first!")
+        return
+
+    if len(master) < 10:
+        print("\n❌ Error: Master password must be at least 10 characters.")
+        return
+
+    seed = input("🌱 Service (e.g., gmail, bank): ").strip().lower()
     
-    # 5. Generation
-    result = generate_password(m_pass, seed, password_length, use_syms)
-    
-    # 6. Output & Security Countdown
-    print("\n" + "-" * 30)
     try:
-        pyperclip.copy(result)
-        win_success = copy_to_windows_clipboard(result)
-        
-        status = "Windows clipboard" if win_success else "Standard clipboard"
-        print(f"✅ Copied to {status}!")
-        print(f"\n🔑 PASSWORD: {result}\n")
-        print("-" * 30)
-        
-        # Countdown
+        ln_in = input("📏 Length [16]: ")
+        length = int(ln_in) if ln_in else 16
+    except: length = 16
+
+    sym_in = input("✨ Use Symbols? (y/n) [y]: ").lower()
+    use_symbols = False if sym_in == 'n' else True
+
+    # Generation
+    password = generate_password(master, seed, length, use_symbols)
+
+    # Clipboard Operation
+    method = copy_to_clipboard(password)
+    
+    print("\n" + "—" * 30)
+    if method:
+        print(f"✅ Copied to: {method}")
+    else:
+        print("⚠️ Automatic copy failed. Clipboard tool not found.")
+    
+    print(f"🔑 PASSWORD: {password}")
+    print("—" * 30 + "\n")
+
+    # Security Timer
+    try:
         for i in range(20, 0, -1):
-            print(f"Security clear in {i}s... ", end="\r")
+            print(f"🧹 Clearing memory in {i}s... ", end="\r")
             time.sleep(1)
-            
-        # THE CLEANUP (The "Flash" effect)
-        pyperclip.copy("")
-        copy_to_windows_clipboard("")
-        
-        # Clear screen (Ctrl+L equivalent)
-        print("\033[H\033[J", end="")
-        
-        # Minimalist security flash
-        print("Done. Clipboard & screen cleared.")
-        
-    except Exception as e:
-        print(f"\n❌ Clipboard error: {e}")
-        print(f"Your password is: {result}")
+    except KeyboardInterrupt:
+        pass
+
+    # Final Cleanup
+    copy_to_clipboard("") # Clear clipboard
+    print("\033[H\033[J🔒 Memory and screen cleared.")
 
 if __name__ == "__main__":
     main()
